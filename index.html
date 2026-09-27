@@ -101,7 +101,6 @@
 </div>
 
 <!-- ==================== MODAL: AGENDAMENTO ==================== -->
-<!-- ==================== MODAL: AGENDAMENTO ==================== -->
 <div class="modal-fundo" id="modal-agendamento" hidden>
     <div class="modal-caixa">
         <div class="modal-cabecalho">
@@ -182,8 +181,7 @@
     </div>
 </div>
 
-<!-- ==================== MODAL: EDITAR USUÁRIO (ADM) ==================== -->
-<!-- ==================== MODAL: EDITAR USUÁRIO (ADM) ==================== -->
+<!-- ==================== MODAL: USUÁRIO (ADM) ==================== -->
 <div class="modal-fundo" id="modal-usuario" hidden>
     <div class="modal-caixa">
         <div class="modal-cabecalho">
@@ -192,10 +190,7 @@
         </div>
         <form id="form-usuario">
             <div class="modal-corpo">
-                <div class="campo" id="usu-grupo-id" hidden>
-                    <label for="usu-id">UUID (Auth)</label>
-                    <input type="text" id="usu-id" readonly>
-                </div>
+                <input type="hidden" id="usu-id">
                 <div class="campo">
                     <label for="usu-nome">Nome</label>
                     <input type="text" id="usu-nome" required>
@@ -204,10 +199,20 @@
                     <label for="usu-email">E-mail</label>
                     <input type="email" id="usu-email" required>
                 </div>
+
+                <!-- Nova senha opcional (aparece só no modo edição) -->
+                <div class="campo" id="usu-grupo-nova-senha" hidden>
+                    <label for="usu-nova-senha">Nova senha (opcional)</label>
+                    <input type="text" id="usu-nova-senha" minlength="6" placeholder="Deixe em branco para não alterar">
+                    <small class="ajuda">Só preencha se quiser redefinir a senha do usuário.</small>
+                </div>
+
+                <!-- Senha inicial (aparece só no modo criação) -->
                 <div class="campo" id="usu-grupo-senha" hidden>
-                    <label for="usu-senha">Senha inicial</label>
+                    <label for="usu-senha">Senha</label>
                     <input type="text" id="usu-senha" minlength="6" placeholder="Mínimo 6 caracteres">
                 </div>
+
                 <div class="campo">
                     <label for="usu-funcao">Função</label>
                     <select id="usu-funcao"></select>
@@ -261,6 +266,39 @@
                 <div class="modal-rodape">
                     <button type="button" class="btn btn-secundario" id="tar-cancelar">Cancelar</button>
                     <button type="submit" class="btn btn-primario" id="tar-salvar">Salvar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ==================== MODAL: LOCAL (ADM) ==================== -->
+<div class="modal-fundo" id="modal-local" hidden>
+    <div class="modal-caixa">
+        <div class="modal-cabecalho">
+            <h2 id="modal-local-titulo">Novo local</h2>
+            <button class="modal-fechar" data-fechar-modal aria-label="Fechar">×</button>
+        </div>
+        <form id="form-local">
+            <div class="modal-corpo">
+                <input type="hidden" id="loc-id">
+                <div class="campo">
+                    <label for="loc-nome">Nome</label>
+                    <input type="text" id="loc-nome" required>
+                </div>
+                <div class="campo">
+                    <label for="loc-cidade">Cidade</label>
+                    <input type="text" id="loc-cidade" required>
+                </div>
+                <label class="chk-linha">
+                    <input type="checkbox" id="loc-ativo">
+                    Local ativo
+                </label>
+            </div>
+            <div class="modal-corpo" style="padding-top:0;">
+                <div class="modal-rodape">
+                    <button type="button" class="btn btn-secundario" id="loc-cancelar">Cancelar</button>
+                    <button type="submit" class="btn btn-primario" id="loc-salvar">Salvar</button>
                 </div>
             </div>
         </form>
