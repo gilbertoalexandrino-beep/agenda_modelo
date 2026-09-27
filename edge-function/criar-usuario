@@ -1,3 +1,14 @@
+/* ============================================================
+   criar-usuario
+   Edge Function que:
+   - Cria usuário (auth + public.usuarios) quando NÃO recebe
+     `usuario_id`.
+   - Atualiza a senha de um usuário existente quando recebe
+     `usuario_id` + `senha`.
+
+   Só pode ser chamada por um ADM ativo.
+   ============================================================ */
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
 
 const cors = {
@@ -20,59 +31,63 @@ Deno.serve(async (req) => {
         const URL = Deno.env.get('SUPABASE_URL')!;
         const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-        // ---- 1. Pega o token cru do header ----
-        const authHeader = req.headers.get('Authorization');
-        console.log('[DEBUG] authHeader presente:', !!authHeader);
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return json({ error: 'Não autenticado (sem token).' }, 401);
+        // ---- 1. Token do chamador ----
+        const auth = req.headers.get('Authorization');
+        if (!auth?.startsWith('Bearer ')) {
+            return json({ error: 'Não autenticado.' }, 401);
         }
+        const jwt = auth.replace('Bearer ', '').trim();
 
-        const jwt = authHeader.replace('Bearer ', '').trim();
-        console.log('[DEBUG] jwt primeiros 20 chars:', jwt.slice(0, 20));
-
-        // ---- 2. Valida o JWT usando SERVICE_ROLE ----
-        // Este é o padrão robusto: o admin client verifica o token
-        // do usuário diretamente contra o Auth, sem depender do
-        // cliente anon conseguir ler o header.
         const admin = createClient(URL, SERVICE, {
             auth: { autoRefreshToken: false, persistSession: false },
         });
 
+        // ---- 2. Valida JWT ----
         const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
-        console.log('[DEBUG] getUser error:', userErr?.message);
-        console.log('[DEBUG] user id:', userData?.user?.id);
-
         if (userErr || !userData?.user) {
-            return json({ error: 'Sessão inválida ou expirada. Faça logout e login novamente.' }, 401);
+            return json({ error: 'Sessão inválida.' }, 401);
         }
 
-        const user = userData.user;
-
-        // ---- 3. Confirma que é ADM ativo ----
-        // Como já temos o service_role, consultamos direto.
-        const { data: perfil, error: perfilErr } = await admin
+        // ---- 3. É ADM ativo? ----
+        const { data: perfil } = await admin
             .from('usuarios')
             .select('escopo, ativo')
-            .eq('id', user.id)
+            .eq('id', userData.user.id)
             .maybeSingle();
 
-        console.log('[DEBUG] perfil:', perfil, 'erro:', perfilErr?.message);
-
-        if (perfilErr || !perfil) {
-            return json({ error: 'Perfil não encontrado.' }, 403);
-        }
-        if (!perfil.ativo) {
-            return json({ error: 'Usuário inativo.' }, 403);
-        }
-        if (perfil.escopo !== 'adm') {
-            return json({ error: 'Apenas administradores podem criar usuários.' }, 403);
+        if (!perfil?.ativo || perfil.escopo !== 'adm') {
+            return json({ error: 'Apenas administradores podem executar essa ação.' }, 403);
         }
 
         // ---- 4. Payload ----
         const body = await req.json().catch(() => null);
         if (!body) return json({ error: 'Corpo inválido.' }, 400);
 
+        const usuarioId = body.usuario_id ? String(body.usuario_id).trim() : '';
+
+        // ============================================================
+        // MODO A — ATUALIZAR SENHA (veio usuario_id)
+        // ============================================================
+        if (usuarioId) {
+            const senha = String(body.senha || '');
+            if (senha.length < 6) {
+                return json({ error: 'A senha deve ter ao menos 6 caracteres.' }, 400);
+            }
+
+            const { error: upErr } = await admin.auth.admin.updateUserById(usuarioId, {
+                password: senha,
+            });
+
+            if (upErr) {
+                return json({ error: 'Erro ao atualizar senha: ' + upErr.message }, 400);
+            }
+
+            return json({ ok: true, modo: 'senha' }, 200);
+        }
+
+        // ============================================================
+        // MODO B — CRIAR USUÁRIO (sem usuario_id)
+        // ============================================================
         const nome = String(body.nome || '').trim();
         const email = String(body.email || '').trim().toLowerCase();
         const senha = String(body.senha || '');
@@ -85,16 +100,12 @@ Deno.serve(async (req) => {
         if (senha.length < 6) return json({ error: 'A senha deve ter ao menos 6 caracteres.' }, 400);
         if (!['adm', 'user'].includes(escopo)) return json({ error: 'Escopo inválido.' }, 400);
 
-        // ---- 5. Cria no Auth ----
         const { data: created, error: createErr } = await admin.auth.admin.createUser({
             email,
             password: senha,
             email_confirm: true,
             user_metadata: { nome },
         });
-
-        console.log('[DEBUG] createUser error:', createErr?.message);
-        console.log('[DEBUG] novo id:', created?.user?.id);
 
         if (createErr) {
             const m = createErr.message.toLowerCase();
@@ -106,7 +117,6 @@ Deno.serve(async (req) => {
 
         const id = created.user.id;
 
-        // ---- 6. Completa public.usuarios ----
         const { error: upsertErr } = await admin
             .from('usuarios')
             .upsert({ id, nome, email, funcao_id: funcaoId, escopo, ativo }, { onConflict: 'id' });
@@ -116,10 +126,9 @@ Deno.serve(async (req) => {
             return json({ error: 'Erro ao gravar cadastro: ' + upsertErr.message }, 500);
         }
 
-        return json({ user: { id, nome, email, escopo, ativo } }, 201);
+        return json({ user: { id, nome, email, escopo, ativo }, modo: 'criar' }, 201);
 
     } catch (e) {
-        console.error('[DEBUG] exceção:', e);
         return json({ error: 'Erro inesperado: ' + (e as Error).message }, 500);
     }
 });
