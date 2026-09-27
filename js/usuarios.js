@@ -2,6 +2,8 @@
    usuarios.js
    Tela "Cadastro" (somente ADM).
    - Editar: UPDATE direto em public.usuarios (RLS protege).
+             Se a senha for preenchida, chama a mesma Edge
+             Function "criar-usuario" passando { usuario_id, senha }.
    - Criar:  chama a Edge Function "criar-usuario", que usa
              SERVICE_ROLE no servidor para criar o usuário em
              auth.users + completar public.usuarios.
@@ -76,19 +78,19 @@ const Usuarios = {
         App.preencherSelect(document.getElementById('usu-funcao'), App.state.funcoes, 'Sem função definida');
 
         document.getElementById('modal-usuario-titulo').textContent = 'Novo usuário';
-        document.getElementById('usu-grupo-id').hidden = true;
         document.getElementById('usu-grupo-senha').hidden = false;
+        document.getElementById('usu-grupo-nova-senha').hidden = true;
 
         document.getElementById('usu-id').value = '';
         document.getElementById('usu-nome').value = '';
         document.getElementById('usu-email').value = '';
         document.getElementById('usu-senha').value = '';
+        document.getElementById('usu-nova-senha').value = '';
         document.getElementById('usu-funcao').value = '';
         document.getElementById('usu-escopo').value = 'user';
         document.getElementById('usu-ativo').checked = true;
 
-        const senha = document.getElementById('usu-senha');
-        senha.required = true;
+        document.getElementById('usu-senha').required = true;
 
         App.abrirModal('modal-usuario');
     },
@@ -103,12 +105,13 @@ const Usuarios = {
         App.preencherSelect(document.getElementById('usu-funcao'), App.state.funcoes, 'Sem função definida');
 
         document.getElementById('modal-usuario-titulo').textContent = 'Editar usuário';
-        document.getElementById('usu-grupo-id').hidden = false;
         document.getElementById('usu-grupo-senha').hidden = true;
+        document.getElementById('usu-grupo-nova-senha').hidden = false;
 
         document.getElementById('usu-id').value = u.id;
         document.getElementById('usu-nome').value = u.nome || '';
         document.getElementById('usu-email').value = u.email || '';
+        document.getElementById('usu-nova-senha').value = '';
         document.getElementById('usu-funcao').value = u.funcao_id || '';
         document.getElementById('usu-escopo').value = u.escopo;
         document.getElementById('usu-ativo').checked = u.ativo;
@@ -127,7 +130,7 @@ const Usuarios = {
         return Usuarios.salvarNovo();
     },
 
-    // ---------- SALVAR: edição (UPDATE direto, RLS cuida) ----------
+    // ---------- SALVAR: edição ----------
     async salvarEdicao() {
         const id = document.getElementById('usu-id').value;
         const btn = document.getElementById('usu-salvar');
@@ -142,12 +145,12 @@ const Usuarios = {
             ativo: document.getElementById('usu-ativo').checked,
         };
 
+        // 1) Atualiza os dados complementares em public.usuarios
         const { error } = await supabaseClient.from('usuarios').update(payload).eq('id', id);
 
-        btn.disabled = false;
-        btn.textContent = 'Salvar';
-
         if (error) {
+            btn.disabled = false;
+            btn.textContent = 'Salvar';
             const msg = error.code === '23505'
                 ? 'Já existe um usuário com esse e-mail.'
                 : 'Erro ao salvar: ' + error.message;
@@ -155,7 +158,34 @@ const Usuarios = {
             return;
         }
 
-        App.toast('Usuário atualizado.');
+        // 2) Se preencheu nova senha, chama a MESMA Edge Function
+        //    passando { usuario_id, senha } — ela detecta o modo.
+        const novaSenha = document.getElementById('usu-nova-senha').value;
+        if (novaSenha) {
+            const { error: fnErr, data: fnData } = await supabaseClient.functions.invoke(
+                'criar-usuario',
+                { body: { usuario_id: id, senha: novaSenha } }
+            );
+
+            if (fnErr || fnData?.error) {
+                let msg = fnErr?.message || fnData?.error || 'Erro ao atualizar senha.';
+                if (fnErr?.context && typeof fnErr.context.json === 'function') {
+                    try {
+                        const corpo = await fnErr.context.json();
+                        if (corpo?.error) msg = corpo.error;
+                    } catch (_) { /* ignora */ }
+                }
+                btn.disabled = false;
+                btn.textContent = 'Salvar';
+                App.toast('Dados salvos, mas a senha falhou: ' + msg, 'erro');
+                await Usuarios.carregarLista();
+                return;
+            }
+        }
+
+        btn.disabled = false;
+        btn.textContent = 'Salvar';
+        App.toast(novaSenha ? 'Usuário e senha atualizados.' : 'Usuário atualizado.');
         App.fecharModal('modal-usuario');
         await Usuarios.carregarLista();
 
@@ -189,7 +219,6 @@ const Usuarios = {
         btn.textContent = 'Salvar';
 
         if (error) {
-            // FunctionsHttpError traz o corpo em error.context
             let msg = error.message || 'Falha ao criar usuário.';
             try {
                 if (error.context && typeof error.context.json === 'function') {
