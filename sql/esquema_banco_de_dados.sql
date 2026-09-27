@@ -628,11 +628,13 @@ insert into public.tarefas (nome, descricao) values
     ('Apoio presencial', null),
     ('Reunião com coordenação', null),
     ('Reunião com direção', null),
+    ('Reunião com articulador', null),
     ('Formação', null),
     ('Evento', null),
     ('Acompanhamento de ATPA', null),
     ('Acompanhamento de ATPCG', null),
     ('Acompanhamento de avaliação', null)
+    ('Múltiplas demandas', null)
 on conflict (nome) do nothing;
 
 -- Ajuste os locais reais da sua rede de ensino.
