@@ -619,6 +619,8 @@ insert into public.funcoes (nome) values
     ('CEC'),
     ('PEC'),
     ('Dirigente'),
+    ('Assessoria'),
+    ('Outra função')
 on conflict (nome) do nothing;
 
 insert into public.tarefas (nome, descricao) values
@@ -627,17 +629,18 @@ insert into public.tarefas (nome, descricao) values
     ('Reunião com coordenação', null),
     ('Reunião com direção', null),
     ('Formação', null),
-    ('ATPA', null),
-    ('ATPCG', null),
+    ('Evento', null),
+    ('Acompanhamento de ATPA', null),
+    ('Acompanhamento de ATPCG', null),
     ('Acompanhamento de avaliação', null)
 on conflict (nome) do nothing;
 
 -- Ajuste os locais reais da sua rede de ensino.
 insert into public.locais (nome, cidade) values
-    ('Escola Estadual João da Silva', 'Valfenda'),
-    ('Escola Estadual Maria Souza', 'Mordor'),
+    ('Escola 1', 'Valfenda'),
+    ('Escola 2', 'Mordor'),
     ('URE', 'Condado'),
-    ('Sala de formação', 'Condado')
+    ('Sala de Reuniões', 'Condado')
 on conflict (nome, cidade) do nothing;
 -- ============================================================
 -- 19. TRIGGER: AUTO-CRIAR public.usuarios AO CRIAR NO AUTH
