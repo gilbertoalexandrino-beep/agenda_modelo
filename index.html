@@ -187,12 +187,15 @@
 <div class="modal-fundo" id="modal-usuario" hidden>
     <div class="modal-caixa">
         <div class="modal-cabecalho">
-            <h2>Editar usuário</h2>
+            <h2 id="modal-usuario-titulo">Editar usuário</h2>
             <button class="modal-fechar" data-fechar-modal aria-label="Fechar">×</button>
         </div>
         <form id="form-usuario">
             <div class="modal-corpo">
-                <input type="hidden" id="usu-id">
+                <div class="campo" id="usu-grupo-id" hidden>
+                    <label for="usu-id">UUID (Auth)</label>
+                    <input type="text" id="usu-id" readonly>
+                </div>
                 <div class="campo">
                     <label for="usu-nome">Nome</label>
                     <input type="text" id="usu-nome" required>
@@ -200,6 +203,11 @@
                 <div class="campo">
                     <label for="usu-email">E-mail</label>
                     <input type="email" id="usu-email" required>
+                </div>
+                <div class="campo" id="usu-grupo-senha" hidden>
+                    <label for="usu-senha">Senha inicial</label>
+                    <input type="text" id="usu-senha" minlength="6" placeholder="Mínimo 6 caracteres">
+                    <small class="ajuda">O usuário poderá trocar depois de entrar.</small>
                 </div>
                 <div class="campo">
                     <label for="usu-funcao">Função</label>
