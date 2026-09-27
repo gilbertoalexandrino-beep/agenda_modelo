@@ -1,0 +1,95 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+
+const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), {
+        status,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+}
+
+Deno.serve(async (req) => {
+    if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+
+    try {
+        const URL = Deno.env.get('SUPABASE_URL')!;
+        const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
+        const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+        // 1. Quem está chamando?
+        const auth = req.headers.get('Authorization');
+        if (!auth) return json({ error: 'Não autenticado.' }, 401);
+
+        const userClient = createClient(URL, ANON, { global: { headers: { Authorization: auth } } });
+        const { data: { user } } = await userClient.auth.getUser();
+        if (!user) return json({ error: 'Não autenticado.' }, 401);
+
+        // 2. É ADM ativo?
+        const { data: perfil } = await userClient
+            .from('usuarios')
+            .select('escopo, ativo')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        if (!perfil?.ativo || perfil.escopo !== 'adm') {
+            return json({ error: 'Apenas administradores podem criar usuários.' }, 403);
+        }
+
+        // 3. Payload
+        const body = await req.json().catch(() => null);
+        if (!body) return json({ error: 'Corpo inválido.' }, 400);
+
+        const nome = String(body.nome || '').trim();
+        const email = String(body.email || '').trim().toLowerCase();
+        const senha = String(body.senha || '');
+        const escopo = String(body.escopo || 'user');
+        const ativo = body.ativo !== false;
+        const funcaoId = body.funcao_id ? Number(body.funcao_id) : null;
+
+        if (!nome) return json({ error: 'Nome é obrigatório.' }, 400);
+        if (!email.includes('@')) return json({ error: 'E-mail inválido.' }, 400);
+        if (senha.length < 6) return json({ error: 'A senha deve ter ao menos 6 caracteres.' }, 400);
+
+        // 4. Cria no Auth
+        const admin = createClient(URL, SERVICE, {
+            auth: { autoRefreshToken: false, persistSession: false },
+        });
+
+        const { data: created, error: createErr } = await admin.auth.admin.createUser({
+            email,
+            password: senha,
+            email_confirm: true,
+            user_metadata: { nome },
+        });
+
+        if (createErr) {
+            const m = createErr.message.toLowerCase();
+            if (m.includes('already') || m.includes('duplicate') || m.includes('registered')) {
+                return json({ error: 'Já existe um usuário com esse e-mail.' }, 400);
+            }
+            return json({ error: createErr.message }, 400);
+        }
+
+        const id = created.user.id;
+
+        // 5. Completa public.usuarios
+        const { error: upsertErr } = await admin
+            .from('usuarios')
+            .upsert({ id, nome, email, funcao_id: funcaoId, escopo, ativo }, { onConflict: 'id' });
+
+        if (upsertErr) {
+            await admin.auth.admin.deleteUser(id); // rollback
+            return json({ error: 'Erro ao gravar cadastro: ' + upsertErr.message }, 500);
+        }
+
+        return json({ user: { id, nome, email, escopo, ativo } }, 201);
+
+    } catch (e) {
+        return json({ error: 'Erro inesperado: ' + (e as Error).message }, 500);
+    }
+});
