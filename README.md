@@ -20,9 +20,11 @@ para exportação em Excel.
 - [Estrutura de arquivos](#estrutura-de-arquivos)
 - [Modelo de dados](#modelo-de-dados)
 - [Segurança](#segurança)
+- [Usar como template](#usar-como-template)
 - [Instalação](#instalação)
 - [Configuração do Supabase](#configuração-do-supabase)
 - [Edge Function: `criar-usuario`](#edge-function-criar-usuario)
+- [Deploy no Vercel](#deploy-no-vercel)
 - [Como usar](#como-usar)
 - [Personalização](#personalização)
 - [Limitações conhecidas](#limitações-conhecidas)
@@ -367,6 +369,62 @@ valida o JWT do chamador, confirma que é ADM ativo e só então:
 
 ---
 
+## Usar como template
+
+Este repositório pode ser usado como **template** no GitHub — ou seja,
+qualquer pessoa pode gerar um projeto novo (com histórico próprio) a
+partir dele.
+
+### Passo 1 — Criar o repositório a partir do template
+
+No GitHub, acesse a página do repositório deste projeto e clique no
+botão verde **"Use this template"** (canto superior direito) →
+**"Create a new repository"**.
+
+Na tela que abrir, defina:
+
+| Campo | O que colocar |
+|---|---|
+| **Owner** | sua conta ou organização |
+| **Repository name** | o nome do seu projeto (ex.: `gestao-visitas-minha-rede`) |
+| **Visibility** | Public ou Private (à sua escolha) |
+| **Include all branches** | deixe desmarcado, a não ser que queira o histórico completo |
+
+Clique em **"Create repository from template"**.
+
+> O repositório novo contém **todos os arquivos** do template, mas
+> **sem o histórico de commits** — é um projeto novo, seu.
+
+### Passo 2 — Clonar localmente
+
+```bash
+git clone https://github.com/SEU-USUARIO/SEU-REPO.git
+cd SEU-REPO
+```
+
+### Passo 3 — Configurar o Supabase
+
+Siga a seção [Configuração do Supabase](#configuração-do-supabase) deste
+README. É lá que você vai:
+
+1. Criar o projeto no Supabase
+2. Rodar o script SQL (schema, RLS, triggers, seeds)
+3. Editar `js/supabase.js` com a URL e a chave anon do **seu** projeto
+4. Criar o primeiro ADM e promovê-lo via SQL
+
+### Passo 4 — Deploy da Edge Function
+
+A Edge Function `criar-usuario` precisa ser criada **no painel do
+Supabase do seu projeto**. Siga a seção
+[Edge Function: `criar-usuario`](#edge-function-criar-usuario).
+
+### Passo 5 — Publicar
+
+Hospede como quiser. Instruções para Vercel em
+[Deploy no Vercel](#deploy-no-vercel).
+
+---
+
 ## Instalação
 
 ### Pré-requisitos
@@ -398,9 +456,9 @@ npx serve .
 
 ### Opção D — Hospedagem estática
 
-Netlify, Vercel, GitHub Pages, Cloudflare Pages — qualquer uma funciona
-(é só HTML/CSS/JS estático). Lembre de configurar o domínio do site em
-**Authentication → URL Configuration** no Supabase.
+Vercel, Netlify, GitHub Pages, Cloudflare Pages — qualquer uma funciona.
+Lembre de configurar o domínio do site em **Authentication → URL
+Configuration** no Supabase.
 
 ---
 
@@ -461,8 +519,15 @@ update public.usuarios
  where email = 'seu@email.com';
 ```
 
-Depois faça login no app com esse usuário. A partir daí, ele pode criar
-os demais usuários pela tela de **Cadastro**.
+Depois faça login no app com esse usuário.
+
+### 5. Adicionar o domínio de produção
+
+Depois de publicar o site (ver [Deploy no Vercel](#deploy-no-vercel)),
+volte ao Supabase em **Authentication → URL Configuration** e adicione
+o domínio (ex.: `https://seu-projeto.vercel.app`) tanto em **Site URL**
+quanto em **Redirect URLs**. Sem isso, o login pode falhar no domínio
+de produção.
 
 ---
 
@@ -522,19 +587,126 @@ const { data, error } = await supabaseClient.functions.invoke('criar-usuario', {
 O `supabase-js` envia o JWT do usuário logado automaticamente. A função
 valida que é ADM ativo antes de qualquer coisa.
 
-### Fluxo interno
+---
 
-1. Lê o header `Authorization`, extrai o JWT
-2. Verifica o JWT via `admin.auth.getUser(jwt)`
-3. Consulta `public.usuarios` para confirmar `escopo = 'adm'` e `ativo = true`
-4. Se o payload tem `usuario_id`:
-   - Valida senha ≥ 6
-   - Chama `admin.auth.admin.updateUserById(usuario_id, { password })`
-5. Senão:
-   - Valida todos os campos
-   - Chama `admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { nome } })`
-   - Faz `upsert` em `public.usuarios` (o trigger já criou a linha básica)
-   - Em caso de falha no upsert, faz rollback com `deleteUser`
+## Deploy no Vercel
+
+O projeto é **estático** (HTML, CSS, JS, imagens). O Vercel detecta
+isso automaticamente e faz o deploy **sem build step**, sem precisar de
+`package.json`, sem configuração especial[reference:0].
+
+### Passo 1 — Suba o código para o GitHub
+
+Se ainda não estiver no GitHub, crie um repositório e faça push:
+
+```bash
+git init
+git add .
+git commit -m "Primeiro commit"
+git branch -M main
+git remote add origin https://github.com/SEU-USUARIO/SEU-REPO.git
+git push -u origin main
+```
+
+### Passo 2 — Crie a conta no Vercel
+
+1. Acesse [vercel.com](https://vercel.com)
+2. Clique em **Sign Up**
+3. Escolha **Continue with GitHub** e autorize o Vercel a acessar
+   seus repositórios
+
+O Vercel fica automaticamente vinculado à sua conta GitHub[reference:1].
+
+### Passo 3 — Importe o projeto
+
+1. No painel do Vercel, clique em **Add New…** → **Project**
+2. Em **Import Git Repository**, localize o repositório do projeto
+3. Clique em **Import**[reference:2]
+
+> Se o repositório não aparecer, clique em **Adjust GitHub App
+> Permissions** e conceda acesso ao repositório específico.
+
+### Passo 4 — Configure o projeto
+
+Na tela de configuração:
+
+| Campo | Valor |
+|---|---|
+| **Framework Preset** | `Other` |
+| **Root Directory** | deixe **em branco** (a raiz do repositório) |
+| **Build Command** | deixe **em branco** (Vercel ignora) |
+| **Output Directory** | deixe **em branco** |
+
+Como é um site estático puro, o Vercel **não precisa** rodar build
+nenhum. Ele serve os arquivos como estão[reference:3].
+
+### Passo 5 — Deploy
+
+Clique em **Deploy**. O Vercel:
+
+1. Clona o repositório
+2. Serve os arquivos estáticos pela CDN global
+3. Gera uma URL de preview tipo
+   `https://seu-projeto-xxxx.vercel.app`
+
+Depois do deploy concluído, o **domínio de produção** fica em
+`https://seu-projeto.vercel.app`.
+
+### Passo 6 — Configure o Supabase para aceitar o domínio
+
+No painel Supabase → **Authentication → URL Configuration**:
+
+- **Site URL:** `https://seu-projeto.vercel.app`
+- **Redirect URLs:** adicione `https://seu-projeto.vercel.app/**`
+
+Sem isso, o login funciona no `localhost` mas pode falhar no domínio
+do Vercel.
+
+### Passo 7 — Deploys automáticos
+
+A partir do momento em que o repositório está conectado, **todo push
+para o `main` gera um novo deploy de produção**, e todo push para
+outras branches gera um **deploy de preview** com URL própria. Não
+precisa fazer nada manualmente[reference:4].
+
+### Variáveis de ambiente (opcional)
+
+Como as credenciais do Supabase estão **no arquivo
+`js/supabase.js`** (e são públicas por natureza), o projeto **não
+precisa** de variáveis de ambiente no Vercel. Mas se você quiser
+mover para variáveis de ambiente no futuro, o Vercel permite:
+
+1. Painel do projeto → **Settings → Environment Variables**
+2. Adicione cada chave (ex.: `VITE_SUPABASE_URL`)
+3. Escolha os ambientes (**Production**, **Preview**,
+   **Development**)[reference:5]
+
+> ⚠️ Como o projeto **não usa build step**, variáveis de ambiente
+> **não** são injetadas automaticamente nos arquivos estáticos. Se
+> precisar delas no cliente, teria que migrar para uma build tool
+> (Vite, Webpack) — não é o caso atual.
+
+### Alternativa — Deploy via CLI
+
+Se preferir fazer o deploy sem GitHub:
+
+```bash
+# Instala o CLI globalmente
+npm i -g vercel
+
+# Login
+vercel login
+
+# Deploy (a partir da pasta do projeto)
+vercel
+
+# Deploy em produção (sem prompt)
+vercel --prod
+```
+
+O primeiro `vercel` cria um projeto novo e pergunta as configurações.
+Como é estático, aceite os defaults (framework `Other`, sem build
+command)[reference:6].
 
 ---
 
