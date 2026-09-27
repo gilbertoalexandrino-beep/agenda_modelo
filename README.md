@@ -38,8 +38,8 @@ formação. Cada visita é um **agendamento** que relaciona:
 
 - **Usuário** responsável (quem faz a visita)
 - **Local** (escola, URE, etc.) e **cidade**
-- **Data** e **período(s)** (manhã / tarde / noite)
-- **Tarefa(s)** realizadas (acompanhamento, formação, ATPA, etc.)
+- **Data** e **período(s)** — pode marcar mais de um: manhã, tarde e/ou noite
+- **Tarefa** realizada (acompanhamento, formação, ATPA, etc.)
 - **Status** (planejado / concluído)
 - **Objetivo** e **resumo** (texto livre)
 
@@ -63,8 +63,8 @@ O sistema tem dois perfis, definidos na coluna `escopo` da tabela
 
 - Consulta o próprio cadastro
 - Consulta funções, locais e tarefas **ativos**
-- Consulta seus próprios agendamentos (exceto no Consolidado, onde vê
-  todos, para fins de coordenação de equipe)
+- Consulta **todos** os agendamentos (necessário para o Consolidado,
+  onde a equipe enxerga junto quem estará em cada local)
 - Cria agendamentos **somente para si**
 - Edita e exclui **somente** seus próprios agendamentos
 - Vê o próprio relatório e os indicadores
@@ -74,10 +74,10 @@ O sistema tem dois perfis, definidos na coluna `escopo` da tabela
 - Consulta todos os usuários e agendamentos
 - Altera dados complementares dos usuários (nome, e-mail, função,
   escopo, ativo)
+- **Cria novos usuários** e **redefine senha** via Edge Function
 - Cria, edita e exclui qualquer agendamento
 - Gerencia funções, locais e tarefas
 - Acessa o relatório geral (consolidado de toda a rede)
-- Cria novos usuários via Edge Function (login + complemento)
 
 ---
 
@@ -94,6 +94,8 @@ Cards de resumo + lista das próximas visitas.
 
 Lista tabular dos agendamentos com filtros por data, local, período e
 status. Cada linha abre o modal de edição (se o usuário tiver permissão).
+Ao editar, se a visita for **planejada** e o usuário tiver permissão,
+o botão **Excluir** aparece no rodapé do modal.
 
 ### 3. Calendário
 
@@ -102,9 +104,12 @@ Integração com **FullCalendar 6**. Cores por status:
 - 🟠 Planejado (laranja escuro)
 - 🔵 Concluído (azul)
 
-Clique em um evento para abrir detalhes (ou edição, se for seu).
-Clique em um dia vazio para abrir o formulário de nova visita com a data
-já preenchida. Em telas pequenas, inicia na visão de Lista.
+Clique em um evento planejado → abre o formulário de edição (se for seu
+ou se for ADM). Clique em um evento concluído → abre o modal de detalhes
+(somente leitura). Clique em um dia vazio → abre o formulário de nova
+visita com a data já preenchida.
+
+Em telas pequenas, inicia na visão de Lista, com toolbar compacta.
 
 ### 4. Consolidado Semanal
 
@@ -115,14 +120,18 @@ Matriz com:
 - **Células:** compromissos do local naquele dia, agrupados por período
 
 Clique em qualquer célula vazia para criar uma visita com **data e local
-já preenchidos**. Clique em um compromisso para ver os detalhes.
+já preenchidos**. Clique em um compromisso existente para ver os detalhes.
+A coluna de localidades é fixa (sticky) ao rolar horizontalmente.
 
 ### 5. Cadastro (ADM)
 
 Lista de usuários com edição de **nome**, **e-mail**, **função**,
-**escopo** e **ativo**. Criação de novos usuários via **Edge Function**
-`criar-usuario` (que usa `service_role` no servidor — nunca no
-frontend).
+**escopo** e **ativo**. Também permite **redefinir a senha** de qualquer
+usuário (campo opcional no modal de edição).
+
+Criação de novos usuários é feita via **Edge Function** `criar-usuario`,
+que roda no servidor com `service_role` para criar a conta em
+`auth.users` e completar `public.usuarios` numa transação atômica.
 
 ### 6. Locais (ADM)
 
@@ -166,21 +175,22 @@ tarefa, status, período e evolução semanal.
 │  Supabase                    │
 │  ─ Auth (JWT)                │
 │  ─ PostgreSQL + RLS          │
+│  ─ RPC listar_usuarios_ativos│
 │  ─ Edge Function             │
 │    criar-usuario             │
-│    (service_role)            │
+│    (criar / redefinir senha) │
 └──────────────────────────────┘
 ```
 
 - **Frontend:** SPA com seções trocadas via JavaScript. Cada módulo
   registra sua view em `App.registrarView(id, { onEnter })`.
-- **Autenticação:** Supabase Auth. O JWT do usuário é enviado em todas
-  as requisições; a RLS do banco filtra as linhas por `auth.uid()`.
+- **Autenticação:** Supabase Auth. O JWT é enviado em todas as
+  requisições; a RLS filtra as linhas por `auth.uid()`.
 - **Edge Function:** roda no servidor Supabase com a `service_role`
-  para criar usuários no Auth — operação que o cliente anon não pode
-  fazer por segurança.
-- **Sem framework:** tudo em JavaScript puro, sem build step, sem npm.
-  Basta abrir o `index.html` (com um servidor HTTP simples) e funciona.
+  para criar usuários e redefinir senhas — operações que o cliente
+  anon não pode fazer por segurança.
+- **Sem framework:** JavaScript puro, sem build step, sem npm. Basta
+  servir os arquivos via HTTP e abrir o `index.html`.
 
 ---
 
@@ -223,7 +233,7 @@ tarefa, status, período e evolução semanal.
 **Fora do repositório**, no painel Supabase:
 
 ```
-supabase/functions/criar-usuario/index.ts   # Edge Function (deploy separado)
+supabase/functions/criar-usuario/index.ts   # Edge Function (deploy pelo painel)
 ```
 
 ---
@@ -280,7 +290,7 @@ Cinco tabelas no schema `public`:
 | `local_id` | bigint NOT NULL FK → `locais.id` | |
 | `tarefa_id` | bigint NOT NULL FK → `tarefas.id` | |
 | `data` | date NOT NULL | |
-| `periodo` | text NOT NULL | `'manha'`, `'tarde'`, `'noite'` |
+| `periodo` | **text[] NOT NULL** | array de `'manha'`, `'tarde'`, `'noite'` |
 | `status` | text NOT NULL | `'planejado'` ou `'concluido'` |
 | `objetivo` | text | opcional |
 | `resumo` | text | **obrigatório** se `status = 'concluido'` |
@@ -290,8 +300,11 @@ Cinco tabelas no schema `public`:
 **Restrições importantes:**
 
 - `status = 'concluido'` exige `resumo` não-vazio
-- `periodo` restrito a `'manha'`, `'tarde'`, `'noite'`
+- `periodo` é um array que **contém pelo menos 1** item, e **todos** os
+  itens estão em `{'manha','tarde','noite'}` — validado por
+  `periodo <@ array['manha','tarde','noite'] and array_length(periodo, 1) >= 1`
 - `status` restrito a `'planejado'`, `'concluido'`
+- Índice **GIN** em `periodo` para acelerar consultas `contains`
 
 ---
 
@@ -311,29 +324,46 @@ Resumo das policies:
 | `locais` | ADM ou ativo | ADM | ADM | ADM |
 | `tarefas` | ADM ou ativo | ADM | ADM | ADM |
 | `usuarios` | self ou ADM | ADM | self (nome/e-mail) ou ADM | — |
-| `agendamentos` | ativo (todos veem) | self ou ADM | self ou ADM | self ou ADM |
+| `agendamentos` | **ativo (todos veem)** | self ou ADM | self ou ADM | **self ou ADM** |
+
+A policy de `SELECT` em `agendamentos` deixa **qualquer usuário ativo
+ver todos os agendamentos** — isso é intencional, para o Consolidado
+funcionar como painel de equipe. A **edição** continua restrita: cada
+um só altera o próprio (ou o ADM altera qualquer).
 
 ### Trigger de proteção de campos administrativos
 
-Na tabela `usuarios`, uma trigger (`trg_usuarios_protege_campos_admin`)
+Na tabela `usuarios`, a trigger `trg_usuarios_protege_campos_admin`
 impede que um USER altere `escopo`, `funcao_id` ou `ativo` do próprio
 registro — mesmo que a RLS permita o UPDATE. Isso é necessário porque
 RLS é row-level, não column-level.
+
+### RPC `listar_usuarios_ativos()`
+
+Como RLS é row-level (não column-level), não seria possível dar ao USER
+permissão de ver só o `nome` dos colegas. Para não vazar e-mails, a
+listagem de nomes é exposta por uma função `SECURITY DEFINER` que
+retorna apenas `(id, nome)`. Usada pelo Calendário, Consolidado e
+algumas listas.
 
 ### Edge Function com `service_role`
 
 A `service_role` do Supabase **nunca** vai para o frontend. Ela só é
 usada dentro da Edge Function `criar-usuario`, que roda no servidor,
-valida o JWT do chamador, confirma que é ADM ativo e só então cria o
-usuário no Auth.
+valida o JWT do chamador, confirma que é ADM ativo e só então:
+
+- **Modo criação:** cria a conta em `auth.users` via
+  `admin.auth.admin.createUser()` + faz upsert em `public.usuarios`
+- **Modo redefinição de senha:** atualiza a senha via
+  `admin.auth.admin.updateUserById()`
 
 ### Boas práticas seguidas
 
 - Nenhuma credencial privilegiada no código do cliente
 - RLS em todas as tabelas, sem exceção
-- Funções `SECURITY DEFINER` com `search_path = ''` (evita ataque por
-  sequestro de schema)
+- Funções `SECURITY DEFINER` com `search_path = ''`
 - Validação de payload na Edge Function (nunca confiar no cliente)
+- CORS restrito nas Edge Functions
 
 ---
 
@@ -369,8 +399,8 @@ npx serve .
 ### Opção D — Hospedagem estática
 
 Netlify, Vercel, GitHub Pages, Cloudflare Pages — qualquer uma funciona
-(é só HTML/CSS/JS estático). Lembre de configurar o Supabase como
-origem permitida em **Authentication → URL Configuration**.
+(é só HTML/CSS/JS estático). Lembre de configurar o domínio do site em
+**Authentication → URL Configuration** no Supabase.
 
 ---
 
@@ -386,7 +416,7 @@ No painel Supabase, crie um projeto novo. Anote a **URL** e a
 Cole o script SQL completo no **SQL Editor** e execute. Isso cria:
 
 - Tabelas (`funcoes`, `usuarios`, `locais`, `tarefas`, `agendamentos`)
-- Índices
+- Índices (incluindo **GIN** em `agendamentos.periodo`)
 - Triggers (`updated_at`, proteção de campos, auto-criação de usuário)
 - Funções auxiliares (`usuario_e_adm`, `usuario_esta_ativo`,
   `listar_usuarios_ativos`)
@@ -431,7 +461,8 @@ update public.usuarios
  where email = 'seu@email.com';
 ```
 
-Depois faça login no app com esse usuário.
+Depois faça login no app com esse usuário. A partir daí, ele pode criar
+os demais usuários pela tela de **Cadastro**.
 
 ---
 
@@ -439,9 +470,18 @@ Depois faça login no app com esse usuário.
 
 ### Por que existe
 
-Criar usuários no Supabase Auth exige `service_role`, que **nunca**
-pode ficar no frontend. A Edge Function roda no servidor com essa
-credencial e expõe apenas um endpoint autenticado.
+Duas operações exigem `service_role`, que **nunca** pode ficar no
+frontend:
+
+- **Criar usuário no Auth** (o cliente anon não tem permissão)
+- **Redefinir a senha de outro usuário** (idem)
+
+Em vez de duas Edge Functions, uma única função roteia pelo payload:
+
+| Payload recebido | O que a função faz |
+|---|---|
+| `{ nome, email, senha, funcao_id, escopo, ativo }` | Cria usuário (Auth + `public.usuarios`) |
+| `{ usuario_id, senha }` | Atualiza somente a senha do usuário |
 
 ### Deploy
 
@@ -449,7 +489,8 @@ No painel Supabase:
 
 1. Menu lateral → **Edge Functions**
 2. **Deploy a new function** → nome: `criar-usuario`
-3. Cole o código TypeScript
+3. Cole o código TypeScript (disponível em
+   `supabase/functions/criar-usuario/index.ts`)
 4. **Deploy**
 5. Confirme que **Enforce JWT verification** está **ativado** em
    Settings
@@ -464,14 +505,36 @@ São injetadas automaticamente pelo Supabase — não precisa configurar:
 
 ### Como o frontend chama
 
+**Criação:**
 ```javascript
 const { data, error } = await supabaseClient.functions.invoke('criar-usuario', {
     body: { nome, email, senha, funcao_id, escopo, ativo }
 });
 ```
 
+**Redefinição de senha:**
+```javascript
+const { data, error } = await supabaseClient.functions.invoke('criar-usuario', {
+    body: { usuario_id, senha }
+});
+```
+
 O `supabase-js` envia o JWT do usuário logado automaticamente. A função
-valida que é ADM ativo antes de criar.
+valida que é ADM ativo antes de qualquer coisa.
+
+### Fluxo interno
+
+1. Lê o header `Authorization`, extrai o JWT
+2. Verifica o JWT via `admin.auth.getUser(jwt)`
+3. Consulta `public.usuarios` para confirmar `escopo = 'adm'` e `ativo = true`
+4. Se o payload tem `usuario_id`:
+   - Valida senha ≥ 6
+   - Chama `admin.auth.admin.updateUserById(usuario_id, { password })`
+5. Senão:
+   - Valida todos os campos
+   - Chama `admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { nome } })`
+   - Faz `upsert` em `public.usuarios` (o trigger já criou a linha básica)
+   - Em caso de falha no upsert, faz rollback com `deleteUser`
 
 ---
 
@@ -486,7 +549,7 @@ Acesse a URL, insira e-mail e senha cadastrados.
 **Pela Agenda:**
 
 1. **+ Nova visita**
-2. Preencha local, data, período(s), tarefa(s), objetivo, status
+2. Preencha local, data, período(s) e tarefa, objetivo e status
 3. **Salvar**
 
 **Pelo Calendário:**
@@ -503,6 +566,12 @@ Acesse a URL, insira e-mail e senha cadastrados.
 Edite a visita, mude o status para **Concluído** e preencha o
 **resumo** (obrigatório).
 
+### Excluir uma visita
+
+Abra a visita pela Agenda ou pelo Calendário. Se você tiver permissão
+(dono ou ADM), o botão **Excluir** aparece no canto esquerdo do rodapé
+do modal. Confirmação por `confirm()` antes de apagar.
+
 ### Exportar para Excel
 
 No **Relatório** ou **Relatório Geral**, clique em **⬇ Exportar
@@ -511,8 +580,13 @@ para servidor).
 
 ### Gerenciar usuários (ADM)
 
-**Cadastro → + Novo usuário** → preencha tudo → Salvar. O usuário é
-criado no Auth + complemento em `public.usuarios` numa transação.
+**Cadastro → + Novo usuário** → preencha nome, e-mail, senha, função,
+escopo e ativo → Salvar. O usuário é criado no Auth + complemento em
+`public.usuarios` numa transação.
+
+Para **redefinir a senha** de alguém, clique em **Editar**, preencha o
+campo **Nova senha (opcional)** e salve. Deixe em branco para não
+alterar.
 
 ---
 
@@ -536,15 +610,17 @@ Edite as variáveis CSS no topo de `css/style.css`:
 
 Hoje são três: `manha`, `tarde`, `noite`. Para adicionar um quarto:
 
-1. Adicione o label em `App.periodoLabel`
-2. Adicione a opção no modal (`index.html`)
-3. Atualize a constraint SQL `agendamentos_periodo_check`
+1. Adicione o label em `App.periodoLabel` (em `app.js`)
+2. Adicione o `<input type="checkbox" name="ag-periodo">` no modal
+   (`index.html`)
+3. Atualize a constraint SQL `agendamentos_periodo_check` para incluir
+   o novo valor no array de permitidos
 
 ### Ícones
 
-Trocados de emoji para PNG em `image/`. Para substituir, basta
-sobrescrever o arquivo com o mesmo nome ou editar o array de itens do
-menu em `app.js` (`montarMenu`).
+Os ícones do menu vêm de `image/` (PNG). Para trocar, basta sobrescrever
+o arquivo com o mesmo nome. Para mudar o mapeamento, edite o array de
+itens do menu em `app.js` (`montarMenu`).
 
 ---
 
@@ -554,8 +630,8 @@ menu em `app.js` (`montarMenu`).
   `email_confirm: true` para simplificar o fluxo interno
 - **Uma tarefa por agendamento** — o modelo atual permite apenas uma
   tarefa por visita
-- **Recuperação de senha** — não implementada no frontend (o Supabase
-  oferece, mas a UI não tem link "esqueci minha senha")
+- **Recuperação de senha self-service** — não há link "esqueci minha
+  senha" no frontend; a senha só é alterada pelo ADM
 - **Sem PWA / offline** — requer conexão
 - **Sem notificações** — não há e-mail nem push ao criar/alterar
   agendamento
