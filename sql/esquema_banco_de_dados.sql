@@ -618,7 +618,7 @@ insert into public.funcoes (nome) values
     ('Supervisor'),
     ('CEC'),
     ('PEC'),
-    ('Dirigente'),
+    ('Dirigente')
 on conflict (nome) do nothing;
 
 insert into public.tarefas (nome, descricao) values
