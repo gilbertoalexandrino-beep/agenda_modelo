@@ -9,7 +9,7 @@ returns table (url text, chave text)
 language sql
 as $$
     select
-        'cole aqui a sua API URL do Supabase',
+        'Cole aqui a sua API URL do Supabase',
         'cole aqui a PUBLISHABLE KEY do Supabase';
 $$;
 
