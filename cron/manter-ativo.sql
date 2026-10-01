@@ -9,8 +9,8 @@ returns table (url text, chave text)
 language sql
 as $$
     select
-        'https://onhqfqnflyojqsizoehdafadp.supabase.co/rest/v1/',
-        'sb_publishable_Yy0iudsdadtMn2KtWcx-r_YSuYw_np-UiBn3';
+        'cole aqui a sua API URL do Supabase',
+        'cole aqui a PUBLISHABLE KEY do Supabase';
 $$;
 
 
